@@ -1,0 +1,76 @@
+# XcodeGen project description for the macOS application.
+#   brew install xcodegen
+#   xcodegen generate
+#   open Ensemble.xcodeproj
+# The generated project is not committed; the Swift package in this directory holds the code.
+name: Ensemble
+options:
+  bundleIdPrefix: org.ensemble-app
+  deploymentTarget:
+    macOS: "13.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+packages:
+  Ensemble:
+    path: .
+targets:
+  Ensemble:
+    type: application
+    platform: macOS
+    sources:
+      - path: Apps/EnsembleMac
+        excludes:
+          - Info.plist
+          - Ensemble.entitlements
+    dependencies:
+      - package: Ensemble
+        product: SequencerKit
+      - package: Ensemble
+        product: CoreMIDIKit
+    info:
+      path: Apps/EnsembleMac/Info.plist
+      properties:
+        CFBundleName: Ensemble
+        CFBundleDisplayName: Ensemble
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "13.0"
+        NSHumanReadableCopyright: "MIT License"
+        NSPrincipalClass: NSApplication
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Cakewalk Work
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Owner
+            LSItemContentTypes: [org.ensemble-app.cakewalk-work]
+          - CFBundleTypeName: Standard MIDI File
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.midi-audio]
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.ensemble-app.cakewalk-work
+            UTTypeDescription: Cakewalk Work
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [wrk]
+    entitlements:
+      path: Apps/EnsembleMac/Ensemble.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-write: true
+    settings:
+      base:
+        PRODUCT_NAME: Ensemble
+        PRODUCT_BUNDLE_IDENTIFIER: org.ensemble-app.Ensemble
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: true
+        COMBINE_HIDPI_IMAGES: true
+schemes:
+  Ensemble:
+    build:
+      targets:
+        Ensemble: all
+    run:
+      config: Debug

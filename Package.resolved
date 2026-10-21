@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "libsseq",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/zaskar9/libsseq.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "e56e5e89cd730f0f56aa906695e0d21bedafa890"
+      }
+    }
+  ],
+  "version" : 2
+}
