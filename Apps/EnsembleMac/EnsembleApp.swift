@@ -14,6 +14,9 @@ struct EnsembleApp: App {
                 .fileImporter(isPresented: $model.showingOpenPanel, allowedContentTypes: PlayerModel.openableTypes) { result in
                     if case .success(let url) = result { model.open(url) }
                 }
+                .fileImporter(isPresented: $model.showingSoundFontPanel, allowedContentTypes: PlayerModel.soundFontTypes) { result in
+                    if case .success(let url) = result { model.loadSoundFont(url) }
+                }
                 .alert("Ensemble", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
                     Button("OK") { model.errorMessage = nil }
                 } message: {
@@ -30,28 +33,37 @@ struct EnsembleApp: App {
                     .disabled(model.work == nil)
             }
             CommandMenu("Device") {
-                if model.destinations.isEmpty {
-                    Text("No MIDI destinations")
-                } else {
-                    ForEach(model.ports, id: \.self) { port in
-                        Menu("Port \(port + 1)") {
-                            ForEach(model.destinations) { destination in
-                                Button {
-                                    model.map(port: port, to: destination.uniqueID)
-                                } label: {
-                                    if model.portMap[port] == destination.uniqueID {
-                                        Label(destination.name, systemImage: "checkmark")
-                                    } else {
-                                        Text(destination.name)
-                                    }
-                                }
-                            }
+                ForEach(model.ports, id: \.self) { port in
+                    Menu("Port \(port + 1)") {
+                        if model.hasBuiltInSynth {
+                            targetButton("Built-in Synthesizer", port: port, target: .builtInSynth)
+                            Divider()
+                        }
+                        if model.destinations.isEmpty {
+                            Text("No MIDI destinations")
+                        }
+                        ForEach(model.destinations) { destination in
+                            targetButton(destination.name, port: port, target: .destination(destination.uniqueID))
                         }
                     }
                 }
                 Divider()
+                Menu("Synthesizer") {
+                    Toggle("Built-in General MIDI bank", isOn: Binding(
+                        get: { model.soundFontURL == nil },
+                        set: { _ in model.loadSoundFont(nil) }
+                    ))
+                    if let url = model.soundFontURL {
+                        Toggle(url.lastPathComponent, isOn: .constant(true))
+                    }
+                    Divider()
+                    Button("Load SoundFont…") { model.showingSoundFontPanel = true }
+                }
+                .disabled(!model.hasBuiltInSynth)
+                Divider()
                 Button("Panic") { model.panic() }
                     .keyboardShortcut(".", modifiers: [.command])
+                Toggle("Log MIDI to Console", isOn: $model.midiLogging)
             }
             CommandMenu("Scale") {
                 Picker("Scale", selection: $model.scale) {
@@ -72,6 +84,16 @@ struct EnsembleApp: App {
                     .disabled(model.work == nil)
             }
         }
+    }
+}
+
+extension EnsembleApp {
+    /// A menu item with a checkmark when the port goes to this target.
+    private func targetButton(_ name: String, port: Int, target: PlayerModel.PortTarget) -> some View {
+        Toggle(name, isOn: Binding(
+            get: { model.portMap[port] == target },
+            set: { _ in model.map(port: port, to: target) }
+        ))
     }
 }
 

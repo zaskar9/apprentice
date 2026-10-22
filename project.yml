@@ -27,6 +27,8 @@ targets:
         product: SequencerKit
       - package: Ensemble
         product: CoreMIDIKit
+      - package: Ensemble
+        product: SynthKit
     info:
       path: Apps/EnsembleMac/Info.plist
       properties:
@@ -52,6 +54,16 @@ targets:
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [wrk]
+          - UTTypeIdentifier: org.ensemble-app.soundfont
+            UTTypeDescription: SoundFont
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [sf2]
+          - UTTypeIdentifier: org.ensemble-app.dls
+            UTTypeDescription: Downloadable Sounds
+            UTTypeConformsTo: [public.data]
+            UTTypeTagSpecification:
+              public.filename-extension: [dls]
     entitlements:
       path: Apps/EnsembleMac/Ensemble.entitlements
       properties:

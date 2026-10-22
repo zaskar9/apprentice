@@ -40,7 +40,11 @@ public final class CoreMIDIOutput: MIDIOutput {
     }
 
     public func send(_ message: MIDIMessage) {
-        guard let endpoint = endpoint(forPort: message.port), let status = message.bytes.first else { return }
+        guard let endpoint = endpoint(forPort: message.port), let status = message.bytes.first else {
+            MIDILog.log("coremidi: no endpoint for port", message)
+            return
+        }
+        MIDILog.log("coremidi -> endpoint \(endpoint)", message)
         let d1 = message.bytes.count > 1 ? message.bytes[1] : 0
         let d2 = message.bytes.count > 2 ? message.bytes[2] : 0
         // UMP MIDI 1.0 channel voice message, group 0.
@@ -106,7 +110,10 @@ public final class CoreMIDIOutput: MIDIOutput {
         words.withUnsafeBufferPointer { buffer in
             _ = MIDIEventListAdd(&list, MemoryLayout<MIDIEventList>.size, packet, timestamp, buffer.count, buffer.baseAddress!)
         }
-        MIDISendEventList(system.outputPort, endpoint, &list)
+        let status = MIDISendEventList(system.outputPort, endpoint, &list)
+        if status != noErr {
+            MIDILog.log("coremidi", "MIDISendEventList failed: \(status)")
+        }
     }
 
     /// Splits a sysex bank into the payloads of its messages (without the F0 and F7 delimiters).

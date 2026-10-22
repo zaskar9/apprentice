@@ -6,7 +6,8 @@ import SequencerKit
 /// clock was created, with conversion to the `MIDITimeStamp` CoreMIDI schedules against.
 public final class HostClock: SequencerClock {
     private let origin: UInt64
-    private let secondsPerHostTick: Double
+    /// Seconds per `mach_absolute_time` unit.
+    public let secondsPerHostTick: Double
 
     public init() {
         var info = mach_timebase_info_data_t()

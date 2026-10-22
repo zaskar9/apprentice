@@ -155,7 +155,9 @@ public final class Transport {
             Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue().clock.now
         }
         callbacks.send = { ctx, message in
-            Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue().output.send(MIDIMessage(message!.pointee))
+            let m = MIDIMessage(message!.pointee)
+            MIDILog.log("transport", m)
+            Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue().output.send(m)
         }
         callbacks.send_sysex = { ctx, time, port, bytes, size in
             let array = bytes.map { Array(UnsafeBufferPointer(start: $0, count: size)) } ?? []

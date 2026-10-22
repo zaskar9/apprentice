@@ -12,6 +12,7 @@ let package = Package(
     products: [
         .library(name: "SequencerKit", targets: ["SequencerKit"]),
         .library(name: "CoreMIDIKit", targets: ["CoreMIDIKit"]),
+        .library(name: "SynthKit", targets: ["SynthKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/zaskar9/libsseq.git", branch: "main"),
@@ -24,6 +25,10 @@ let package = Package(
         .target(
             name: "CoreMIDIKit",
             dependencies: ["SequencerKit"]
+        ),
+        .target(
+            name: "SynthKit",
+            dependencies: ["SequencerKit", "CoreMIDIKit"]
         ),
         .testTarget(
             name: "SequencerKitTests",

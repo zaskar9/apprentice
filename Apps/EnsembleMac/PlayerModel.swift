@@ -3,6 +3,7 @@ import CoreMIDI
 import CoreMIDIKit
 import Foundation
 import SequencerKit
+import SynthKit
 import UniformTypeIdentifiers
 
 /// The player's state: the open work, the transport and its output, and the position shown in the
@@ -15,8 +16,29 @@ final class PlayerModel: ObservableObject {
         case measures
     }
 
+    /// Where a Cakewalk port goes: the built-in synthesizer or a CoreMIDI destination.
+    enum PortTarget: Equatable {
+        case builtInSynth
+        case destination(MIDIUniqueID)
+
+        static let builtInSynthKey: Int = -1
+        var stored: Int {
+            switch self {
+            case .builtInSynth: return PortTarget.builtInSynthKey
+            case .destination(let id): return Int(id)
+            }
+        }
+        init(stored: Int) {
+            self = stored == PortTarget.builtInSynthKey ? .builtInSynth : .destination(MIDIUniqueID(stored))
+        }
+    }
+
     static let workType = UTType(importedAs: "org.ensemble-app.cakewalk-work", conformingTo: .data)
     static let openableTypes: [UTType] = [workType, .midi]
+    static let soundFontTypes: [UTType] = [
+        UTType(importedAs: "org.ensemble-app.soundfont", conformingTo: .data),
+        UTType(importedAs: "org.ensemble-app.dls", conformingTo: .data),
+    ]
 
     @Published private(set) var work: Work?
     @Published private(set) var fileURL: URL?
@@ -27,15 +49,22 @@ final class PlayerModel: ObservableObject {
         didSet { UserDefaults.standard.set(scale.rawValue, forKey: "scale") }
     }
     @Published private(set) var destinations: [MIDIDestination] = []
-    @Published private(set) var portMap: [Int: MIDIUniqueID] = [:]
+    @Published private(set) var portMap: [Int: PortTarget] = [:]
+    @Published private(set) var soundFontURL: URL?
     @Published var showingOpenPanel = false
+    @Published var showingSoundFontPanel = false
+    @Published var midiLogging = false {
+        didSet { MIDILog.enabled = midiLogging }
+    }
     @Published var errorMessage: String?
     /// True while the user drags the position slider; the timer then leaves `position` alone.
     var isScrubbing = false
 
     private let clock = HostClock()
     private var system: MIDISystem?
-    private var output: CoreMIDIOutput?
+    private var coreMIDI: CoreMIDIOutput?
+    private var synth: BuiltInSynth?
+    private let router = PortRouter()
     private var transport: Transport?
     private let queue = DispatchQueue(label: "org.ensemble-app.transport", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
@@ -46,20 +75,26 @@ final class PlayerModel: ObservableObject {
         }
         if let saved = UserDefaults.standard.dictionary(forKey: "portMap") as? [String: Int] {
             for (key, value) in saved {
-                if let port = Int(key) { portMap[port] = MIDIUniqueID(value) }
+                if let port = Int(key) { portMap[port] = PortTarget(stored: value) }
             }
+        }
+        do {
+            synth = try BuiltInSynth(clock: clock)
+        } catch {
+            errorMessage = "The built-in synthesizer is not available: \(error)"
         }
         do {
             let system = try MIDISystem()
             self.system = system
-            output = CoreMIDIOutput(system: system, clock: clock)
+            coreMIDI = CoreMIDIOutput(system: system, clock: clock)
             system.setupChanged = { [weak self] in
                 Task { @MainActor in self?.refreshDestinations() }
             }
-            refreshDestinations()
         } catch {
-            errorMessage = "MIDI is not available: \(error)"
+            errorMessage = "CoreMIDI is not available: \(error)"
         }
+        restoreSoundFont()
+        refreshDestinations()
     }
 
     // MARK: Files
@@ -104,10 +139,10 @@ final class PlayerModel: ObservableObject {
     }
 
     private func makeTransport() throws {
-        guard let work = work, let output = output else { return }
+        guard let work = work else { return }
         var options = PlaybackOptions(from: work)
         options.lookAhead = 0.1
-        let transport = try Transport(work: work, clock: clock, output: output, options: options)
+        let transport = try Transport(work: work, clock: clock, output: router, options: options)
         self.transport = transport
     }
 
@@ -167,7 +202,8 @@ final class PlayerModel: ObservableObject {
 
     func panic() {
         guard let transport = transport else {
-            output?.allNotesOff()
+            coreMIDI?.allNotesOff()
+            synth?.allNotesOff(now: true)
             return
         }
         stopTimer()
@@ -208,6 +244,8 @@ final class PlayerModel: ObservableObject {
 
     // MARK: Devices
 
+    var hasBuiltInSynth: Bool { synth != nil }
+
     func refreshDestinations() {
         destinations = system?.destinations ?? []
         if let work = work {
@@ -217,23 +255,30 @@ final class PlayerModel: ObservableObject {
         }
     }
 
-    func map(port: Int, to uniqueID: MIDIUniqueID) {
-        portMap[port] = uniqueID
+    func map(port: Int, to target: PortTarget) {
+        portMap[port] = target
         savePortMap()
         applyPortMap()
     }
 
-    /// Maps every port the work uses that has no present destination to the first destination.
-    private func ensurePortMap(for work: Work) {
-        guard let first = destinations.first else {
-            applyPortMap()
-            return
+    private func isPresent(_ target: PortTarget) -> Bool {
+        switch target {
+        case .builtInSynth: return synth != nil
+        case .destination(let id): return destinations.contains { $0.uniqueID == id }
         }
+    }
+
+    /// Maps every port the work uses that has no present target: to the built-in synthesizer,
+    /// or else to the first CoreMIDI destination.
+    private func ensurePortMap(for work: Work) {
+        let fallback: PortTarget? = synth != nil
+            ? PortTarget.builtInSynth
+            : destinations.first.map { PortTarget.destination($0.uniqueID) }
         var changed = false
         for port in ports {
-            let mapped = portMap[port].flatMap { id in destinations.first { $0.uniqueID == id } }
-            if mapped == nil {
-                portMap[port] = first.uniqueID
+            if let target = portMap[port], isPresent(target) { continue }
+            if let fallback = fallback {
+                portMap[port] = fallback
                 changed = true
             }
         }
@@ -242,20 +287,70 @@ final class PlayerModel: ObservableObject {
     }
 
     private func applyPortMap() {
-        guard let output = output else { return }
-        var map: [Int: MIDIDestination] = [:]
-        for (port, uniqueID) in portMap {
-            if let destination = destinations.first(where: { $0.uniqueID == uniqueID }) {
-                map[port] = destination
+        var coreMIDIMap: [Int: MIDIDestination] = [:]
+        for port in Set(portMap.keys).union(ports) {
+            switch portMap[port] {
+            case .builtInSynth?:
+                if let synth = synth {
+                    router.setRoute(PortRouter.Route(output: synth, port: 0), forPort: port)
+                } else {
+                    router.setRoute(nil, forPort: port)
+                }
+            case .destination(let id)?:
+                if let destination = destinations.first(where: { $0.uniqueID == id }), let coreMIDI = coreMIDI {
+                    coreMIDIMap[port] = destination
+                    router.setRoute(PortRouter.Route(output: coreMIDI, port: port), forPort: port)
+                } else {
+                    router.setRoute(nil, forPort: port)
+                }
+            case nil:
+                router.setRoute(nil, forPort: port)
             }
         }
-        output.portMap = map
+        coreMIDI?.portMap = coreMIDIMap
     }
 
     private func savePortMap() {
         var saved: [String: Int] = [:]
-        for (port, uniqueID) in portMap { saved[String(port)] = Int(uniqueID) }
+        for (port, target) in portMap { saved[String(port)] = target.stored }
         UserDefaults.standard.set(saved, forKey: "portMap")
+    }
+
+    // MARK: Synthesizer
+
+    private var soundFontAccess: URL?
+
+    /// Loads a soundfont into the built-in synthesizer (nil: the system's General MIDI bank) and
+    /// remembers it across launches.
+    func loadSoundFont(_ url: URL?) {
+        guard let synth = synth else { return }
+        if let old = soundFontAccess {
+            old.stopAccessingSecurityScopedResource()
+            soundFontAccess = nil
+        }
+        if let url = url, url.startAccessingSecurityScopedResource() {
+            soundFontAccess = url
+        }
+        do {
+            try synth.loadSoundFont(url)
+            soundFontURL = url
+            if let url = url, let bookmark = try? url.bookmarkData(options: .withSecurityScope) {
+                UserDefaults.standard.set(bookmark, forKey: "soundFont")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "soundFont")
+            }
+        } catch {
+            errorMessage = "\(error)"
+            soundFontURL = synth.soundFontURL
+        }
+    }
+
+    private func restoreSoundFont() {
+        guard let bookmark = UserDefaults.standard.data(forKey: "soundFont") else { return }
+        var stale = false
+        if let url = try? URL(resolvingBookmarkData: bookmark, options: .withSecurityScope, bookmarkDataIsStale: &stale) {
+            loadSoundFont(url)
+        }
     }
 
     // MARK: Display

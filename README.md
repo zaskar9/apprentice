@@ -13,6 +13,7 @@ destinations, and play it with a time or measure scale.
 |---|---|---|
 | SequencerKit | `Sources/SequencerKit` | Swift wrapper over the libsseq C API: `Work`, `Track`, `Event`, `Transport`, `Recorder`, maps and time conversions. Platform neutral. |
 | CoreMIDIKit | `Sources/CoreMIDIKit` | `HostClock` (mach time), `MIDISystem` (client, output port, destinations) and `CoreMIDIOutput` (timestamped MIDI 1.0 event lists). |
+| SynthKit | `Sources/SynthKit` | `BuiltInSynth`: a General MIDI synthesizer on Apple's AUMIDISynth unit, with the system bank or a loaded `.sf2`/`.dls`, fed by its own scheduler thread. |
 | Ensemble (macOS) | `Apps/EnsembleMac` | The SwiftUI player. The Xcode project is generated from `project.yml`. |
 | Tests | `Tests/SequencerKitTests` | XCTest for SequencerKit (`swift test`). |
 
@@ -43,14 +44,17 @@ swift test
 ## Using the player
 
 - File > Open (⌘O), or drop a file on the window, or double-click a `.wrk` file in the Finder.
-- Device menu: one submenu per port the work uses; pick the CoreMIDI destination for each. The
-  choice is remembered. Panic (⌘.) sends all-notes-off and a controller reset everywhere.
+- Device menu: one submenu per port the work uses; pick the built-in synthesizer or a CoreMIDI
+  destination for each. The choice is remembered; new ports default to the built-in synthesizer.
+  Device > Synthesizer switches between the system's General MIDI bank and a loaded soundfont
+  (`.sf2` or `.dls`, for example FluidR3_GM); the soundfont is remembered too. Panic (⌘.) sends
+  all-notes-off and a controller reset everywhere.
 - Scale menu: Time (mm:ss) or Measures, like the Media Player's Scale menu.
 - Space plays and pauses, S stops (and rewinds), W rewinds. The slider seeks.
 
-Without a MIDI destination (no synthesizer or interface connected) nothing is heard. On a Mac
-without hardware, enable the IAC Driver in Audio MIDI Setup and route it to a software synth, or use
-a DAW's virtual input.
+The built-in synthesizer sounds without any setup. External destinations (a MIDI interface, a
+DAW's virtual input, FluidSynth started with `-m coremidi`) appear in the Device menu as CoreMIDI
+lists them.
 
 ## Status
 
