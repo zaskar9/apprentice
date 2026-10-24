@@ -14,6 +14,17 @@ final class Playhead: ObservableObject {
     @Published var position: Tick = 0
 }
 
+/// A transport confined to `PlayerModel.queue`: every call goes through that serial queue, which is
+/// what makes it safe to capture in the queue's `@Sendable` closures. `Transport` itself is not
+/// thread-safe and stays non-Sendable in SequencerKit.
+final class ConfinedTransport: @unchecked Sendable {
+    let transport: Transport
+
+    init(_ transport: Transport) {
+        self.transport = transport
+    }
+}
+
 /// The player's state: the open work, the transport and its output, and the position shown in the
 /// window. The transport runs on its own serial queue; everything published here is on the main
 /// thread.
@@ -77,7 +88,7 @@ final class PlayerModel: ObservableObject {
     private var coreMIDI: CoreMIDIOutput?
     private var synth: BuiltInSynth?
     private let router = PortRouter()
-    private var transport: Transport?
+    private var confined: ConfinedTransport?
     private let queue = DispatchQueue(label: "io.github.zaskar9.apprentice.transport", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
 
@@ -139,11 +150,11 @@ final class PlayerModel: ObservableObject {
 
     func close() {
         stopTimer()
-        let old = transport
+        let old = confined
         queue.sync {
-            old?.stop()
+            old?.transport.stop()
         }
-        transport = nil
+        confined = nil
         work = nil
         fileURL = nil
         isPlaying = false
@@ -156,7 +167,7 @@ final class PlayerModel: ObservableObject {
         var options = PlaybackOptions(from: work)
         options.lookAhead = 0.1
         let transport = try Transport(work: work, clock: clock, output: router, options: options)
-        self.transport = transport
+        confined = ConfinedTransport(transport)
     }
 
     // MARK: Transport
@@ -172,70 +183,74 @@ final class PlayerModel: ObservableObject {
     }
 
     func play() {
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         if position >= endTick, endTick > 0 {
-            queue.sync { transport.rewind() }
+            queue.sync { confined.transport.rewind() }
         }
         isPlaying = true
-        queue.async { transport.play() }
+        queue.async { confined.transport.play() }
         startTimer()
     }
 
     func pause() {
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         stopTimer()
-        queue.sync { transport.stop() }
+        position = queue.sync {
+            confined.transport.stop()
+            return confined.transport.now
+        }
         isPlaying = false
-        position = transport.now
     }
 
     func stop() {
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         stopTimer()
-        queue.sync { transport.rewind() }
+        queue.sync { confined.transport.rewind() }
         isPlaying = false
         position = 0
     }
 
     func rewind() {
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         let wasPlaying = isPlaying
         queue.sync {
-            if wasPlaying { transport.seek(to: 0) } else { transport.rewind() }
+            if wasPlaying { confined.transport.seek(to: 0) } else { confined.transport.rewind() }
         }
         position = 0
     }
 
     func seek(to tick: Tick) {
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         let target = max(0, min(tick, endTick))
-        queue.sync { transport.seek(to: target) }
+        queue.sync { confined.transport.seek(to: target) }
         position = target
     }
 
     func panic() {
-        guard let transport = transport else {
+        guard let confined = confined else {
             coreMIDI?.allNotesOff()
             synth?.allNotesOff(now: true)
             return
         }
         stopTimer()
-        queue.sync { transport.panic() }
+        position = queue.sync {
+            confined.transport.panic()
+            return confined.transport.now
+        }
         isPlaying = false
-        position = transport.now
     }
 
     private func startTimer() {
         stopTimer()
-        guard let transport = transport else { return }
+        guard let confined = confined else { return }
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
         var ticks = 0
         timer.setEventHandler { [weak self] in
-            let running = transport.pump()
+            let running = confined.transport.pump()
             ticks += 1
             if !running || ticks % 4 == 0 {
-                let now = transport.now
+                let now = confined.transport.now
                 Task { @MainActor [weak self] in
                     guard let self = self else { return }
                     if !self.isScrubbing { self.position = now }
