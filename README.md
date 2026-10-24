@@ -1,11 +1,11 @@
-# Ensemble
+# Apprentice
 
-A Cakewalk-style MIDI sequencer for Apple platforms, built on [libsseq](https://github.com/zaskar9/libsseq).
-"Ensemble" is the working name.
+A Cakewalk-style MIDI sequencer for Apple platforms, built on [libsseq](https://github.com/zaskar9/libsseq),
+named after Cakewalk Apprentice, the program it follows.
 
-The first milestone is a player in the spirit of the Windows 3.1 Media Player
-(`Docs/concept-media-player.png`): open a `.WRK` or `.MID` file, map its ports to CoreMIDI
-destinations, and play it with a time or measure scale.
+The first milestone is a player in the spirit of the Windows 3.1 Media Player: open a `.WRK` or
+`.MID` file, send its ports to the built-in synthesizer or to CoreMIDI destinations, and play it
+with a time or measure scale.
 
 ## Layout
 
@@ -14,7 +14,7 @@ destinations, and play it with a time or measure scale.
 | SequencerKit | `Sources/SequencerKit` | Swift wrapper over the libsseq C API: `Work`, `Track`, `Event`, `Transport`, `Recorder`, maps and time conversions. Platform neutral. |
 | CoreMIDIKit | `Sources/CoreMIDIKit` | `HostClock` (mach time), `MIDISystem` (client, output port, destinations) and `CoreMIDIOutput` (timestamped MIDI 1.0 event lists). |
 | SynthKit | `Sources/SynthKit` | `BuiltInSynth`: a General MIDI synthesizer on Apple's AUMIDISynth unit, with the system bank or a loaded `.sf2`/`.dls`, fed by its own scheduler thread. |
-| Ensemble (macOS) | `Apps/EnsembleMac` | The SwiftUI player. The Xcode project is generated from `project.yml`. |
+| Apprentice (macOS) | `Apps/Apprentice` | The SwiftUI player. The Xcode project is generated from `project.yml`; the app icon is `Resources/Apprentice.icon` (Icon Composer), with the Illustrator master next to it. |
 | Tests | `Tests/SequencerKitTests` | XCTest for SequencerKit (`swift test`). |
 
 Terminology: libsseq follows the Cakewalk engine (sequence, stream); the Swift layer follows the
@@ -26,8 +26,8 @@ Requirements: macOS 13 or later, Xcode 15 or later, [XcodeGen](https://github.co
 
 ```sh
 brew install xcodegen
-xcodegen generate          # writes Ensemble.xcodeproj (not committed)
-open Ensemble.xcodeproj    # scheme "Ensemble", then Run
+xcodegen generate          # writes Apprentice.xcodeproj (not committed)
+open Apprentice.xcodeproj  # scheme "Apprentice", then Run
 ```
 
 Xcode resolves the libsseq package from GitHub on the first build. To work against a local

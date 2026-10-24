@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @main
-struct EnsembleApp: App {
+struct ApprenticeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = PlayerModel()
 
@@ -17,7 +17,7 @@ struct EnsembleApp: App {
                 .fileImporter(isPresented: $model.showingSoundFontPanel, allowedContentTypes: PlayerModel.soundFontTypes) { result in
                     if case .success(let url) = result { model.loadSoundFont(url) }
                 }
-                .alert("Ensemble", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
+                .alert("Apprentice", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
                     Button("OK") { model.errorMessage = nil }
                 } message: {
                     Text(model.errorMessage ?? "")
@@ -87,7 +87,7 @@ struct EnsembleApp: App {
     }
 }
 
-extension EnsembleApp {
+extension ApprenticeApp {
     /// A menu item with a checkmark when the port goes to this target.
     private func targetButton(_ name: String, port: Int, target: PlayerModel.PortTarget) -> some View {
         Toggle(name, isOn: Binding(

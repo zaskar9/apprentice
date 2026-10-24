@@ -1,5 +1,5 @@
 // swift-tools-version:5.9
-// Ensemble: a Cakewalk-style MIDI sequencer for Apple platforms, built on libsseq.
+// Apprentice: a Cakewalk-style MIDI sequencer for Apple platforms, built on libsseq.
 //
 // This package holds the platform-neutral Swift layer (SequencerKit, a Swift wrapper over the
 // libsseq C API) and the CoreMIDI adapter (CoreMIDIKit). The macOS application lives in Apps/ and
@@ -7,7 +7,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Ensemble",
+    name: "Apprentice",
     platforms: [.macOS(.v13), .iOS(.v16)],
     products: [
         .library(name: "SequencerKit", targets: ["SequencerKit"]),
@@ -15,7 +15,7 @@ let package = Package(
         .library(name: "SynthKit", targets: ["SynthKit"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/zaskar9/libsseq.git", branch: "main"),
+        .package(url: "https://github.com/zaskar9/libsseq.git", from: "0.3.1"),
     ],
     targets: [
         .target(

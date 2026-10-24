@@ -5,7 +5,13 @@ import SwiftUI
 /// play/pause, stop and eject, and the scale name.
 struct PlayerView: View {
     @ObservedObject var model: PlayerModel
+    @ObservedObject var playhead: Playhead
     @State private var sliderValue = 0.0
+
+    init(model: PlayerModel) {
+        self.model = model
+        self.playhead = model.playhead
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -40,7 +46,7 @@ struct PlayerView: View {
         .padding(12)
         .frame(width: 420)
         .navigationTitle(model.title)
-        .onChange(of: model.position) { position in
+        .onChange(of: playhead.position) { position in
             if !model.isScrubbing {
                 sliderValue = model.endTick > 0 ? Double(position) / Double(model.endTick) : 0
             }

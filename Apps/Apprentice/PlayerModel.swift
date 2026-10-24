@@ -6,6 +6,14 @@ import SequencerKit
 import SynthKit
 import UniformTypeIdentifiers
 
+/// The playback position, published separately from the rest of the player's state: it changes
+/// many times a second, and anything that observes it (the window) is re-rendered that often.
+/// The menus observe only `PlayerModel`, so they stay open while playing.
+@MainActor
+final class Playhead: ObservableObject {
+    @Published var position: Tick = 0
+}
+
 /// The player's state: the open work, the transport and its output, and the position shown in the
 /// window. The transport runs on its own serial queue; everything published here is on the main
 /// thread.
@@ -33,17 +41,21 @@ final class PlayerModel: ObservableObject {
         }
     }
 
-    static let workType = UTType(importedAs: "org.ensemble-app.cakewalk-work", conformingTo: .data)
+    static let workType = UTType(importedAs: "io.github.zaskar9.apprentice.cakewalk-work", conformingTo: .data)
     static let openableTypes: [UTType] = [workType, .midi]
     static let soundFontTypes: [UTType] = [
-        UTType(importedAs: "org.ensemble-app.soundfont", conformingTo: .data),
-        UTType(importedAs: "org.ensemble-app.dls", conformingTo: .data),
+        UTType(importedAs: "io.github.zaskar9.apprentice.soundfont", conformingTo: .data),
+        UTType(importedAs: "io.github.zaskar9.apprentice.dls", conformingTo: .data),
     ]
 
     @Published private(set) var work: Work?
     @Published private(set) var fileURL: URL?
     @Published private(set) var isPlaying = false
-    @Published private(set) var position: Tick = 0
+    let playhead = Playhead()
+    private(set) var position: Tick {
+        get { playhead.position }
+        set { playhead.position = newValue }
+    }
     @Published private(set) var endTick: Tick = 0
     @Published var scale: Scale = .time {
         didSet { UserDefaults.standard.set(scale.rawValue, forKey: "scale") }
@@ -66,7 +78,7 @@ final class PlayerModel: ObservableObject {
     private var synth: BuiltInSynth?
     private let router = PortRouter()
     private var transport: Transport?
-    private let queue = DispatchQueue(label: "org.ensemble-app.transport", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "io.github.zaskar9.apprentice.transport", qos: .userInteractive)
     private var timer: DispatchSourceTimer?
 
     init() {
@@ -100,9 +112,9 @@ final class PlayerModel: ObservableObject {
     // MARK: Files
 
     var title: String {
-        guard let url = fileURL else { return "Ensemble" }
+        guard let url = fileURL else { return "Apprentice" }
         let state = isPlaying ? "playing" : (position > 0 ? "paused" : "stopped")
-        return "Ensemble - \(url.lastPathComponent) (\(state))"
+        return "Apprentice - \(url.lastPathComponent) (\(state))"
     }
 
     func open(_ url: URL) {
@@ -116,6 +128,7 @@ final class PlayerModel: ObservableObject {
             endTick = work.endTick
             position = 0
             ensurePortMap(for: work)
+            synth?.preload(for: work)
             try makeTransport()
         } catch {
             errorMessage = "\(url.lastPathComponent): \(error)"
@@ -333,6 +346,7 @@ final class PlayerModel: ObservableObject {
         }
         do {
             try synth.loadSoundFont(url)
+            if let work = work { synth.preload(for: work) }
             soundFontURL = url
             if let url = url, let bookmark = try? url.bookmarkData(options: .withSecurityScope) {
                 UserDefaults.standard.set(bookmark, forKey: "soundFont")

@@ -5,6 +5,6 @@
 xcuserdata/
 DerivedData/
 .DS_Store
-Apps/EnsembleMac/Info.plist
-Apps/EnsembleMac/Ensemble.entitlements
+Apps/Apprentice/Info.plist
+Apps/Apprentice/Apprentice.entitlements
 *.tar.gz

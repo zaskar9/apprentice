@@ -18,6 +18,7 @@ public final class BuiltInSynth: MIDIOutput {
     private let samplers: [AVAudioUnitSampler]
     private let scheduler: MIDIScheduler
     private let state = ChannelState()
+    private let loadLock = NSLock() // instrument loads from the scheduler thread and from preload()
     public private(set) var soundFontURL: URL?
 
     /// The system's General MIDI bank on macOS.
@@ -40,8 +41,9 @@ public final class BuiltInSynth: MIDIOutput {
         }
         let samplers = self.samplers
         let state = self.state
+        let loadLock = self.loadLock
         scheduler = MIDIScheduler(clock: clock) { bytes in
-            BuiltInSynth.deliver(bytes, to: samplers, state: state)
+            BuiltInSynth.deliver(bytes, to: samplers, state: state, loadLock: loadLock)
         }
         try engine.start()
     }
@@ -59,21 +61,66 @@ public final class BuiltInSynth: MIDIOutput {
                                                 bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB),
                                                 bankLSB: UInt8(kAUSampler_DefaultBankLSB))
         scheduler.clear()
+        loadLock.lock()
         state.bankURL = bank
-        scheduler.schedule([0xff], at: 0) // reset marker: the samplers reload their programs from the new bank
+        for i in 0..<16 { state.loaded[i] = -1 } // the samplers reload their programs from the new bank
+        loadLock.unlock()
         soundFontURL = url
         allNotesOff()
     }
 
+    /// Loads the instruments a work will need, so that playback does not stall on the first program
+    /// change of each channel: the tracks' patches and program-change events, and program 0 for
+    /// channels that play notes without one. Synchronous; call before play.
+    public func preload(for work: Work) {
+        var programs: [(channel: Int, program: Int)] = []
+        var seen = Set<Int>()
+        func add(_ channel: Int, _ program: Int) {
+            let key = channel * 128 + program
+            if seen.insert(key).inserted { programs.append((channel, program)) }
+        }
+        for track in work.tracks {
+            let events = work.events(inTrack: track.index)
+            if events.isEmpty { continue }
+            let forced = track.parameters.channel.map { Int($0) }
+            var current = [Int](repeating: -1, count: 16)
+            if let patch = track.parameters.patch {
+                let channel = forced ?? events.first(where: { $0.kind.isMIDI }).map { Int($0.channel) } ?? 0
+                add(channel, patch)
+                current[channel] = patch
+            }
+            for event in events {
+                let channel = forced ?? Int(event.channel)
+                switch event.kind {
+                case .patch:
+                    add(channel, event.data1)
+                    current[channel] = event.data1
+                case .note:
+                    if current[channel] < 0 {
+                        add(channel, 0)
+                        current[channel] = 0
+                    }
+                default:
+                    break
+                }
+            }
+        }
+        loadLock.lock()
+        defer { loadLock.unlock() }
+        for (channel, program) in programs where state.loaded[channel] != program {
+            state.program[channel] = program
+            BuiltInSynth.loadLocked(channel: channel, sampler: samplers[channel], state: state)
+        }
+    }
+
     /// Delivers one message on the scheduler thread.
-    private static func deliver(_ bytes: [UInt8], to samplers: [AVAudioUnitSampler], state: ChannelState) {
+    private static func deliver(_ bytes: [UInt8], to samplers: [AVAudioUnitSampler], state: ChannelState,
+                                loadLock: NSLock) {
         guard let status = bytes.first else { return }
         MIDILog.log("synth deliver", bytes.map { String(format: "%02x", $0) }.joined(separator: " "))
-        if status == 0xff { // bank changed: forget what is loaded
-            for i in 0..<16 { state.loaded[i] = -1 }
-            return
-        }
         if status == 0xf0 { return } // sysex: not supported by the sampler
+        loadLock.lock()
+        defer { loadLock.unlock() }
         let channel = Int(status & 0x0f)
         let kind = status & 0xf0
         let d1 = bytes.count > 1 ? bytes[1] : 0
@@ -82,10 +129,12 @@ public final class BuiltInSynth: MIDIOutput {
         switch kind {
         case 0xc0:
             state.program[channel] = Int(d1)
-            load(channel: channel, sampler: sampler, state: state)
+            if state.loaded[channel] != state.program[channel] {
+                loadLocked(channel: channel, sampler: sampler, state: state)
+            }
         case 0x90, 0x80, 0xa0:
             if state.loaded[channel] != state.program[channel] {
-                load(channel: channel, sampler: sampler, state: state)
+                loadLocked(channel: channel, sampler: sampler, state: state)
             }
             if kind == 0x90 {
                 sampler.startNote(d1, withVelocity: d2, onChannel: UInt8(channel))
@@ -105,7 +154,8 @@ public final class BuiltInSynth: MIDIOutput {
         }
     }
 
-    private static func load(channel: Int, sampler: AVAudioUnitSampler, state: ChannelState) {
+    /// Loads the channel's current program into its sampler; the caller holds `loadLock`.
+    private static func loadLocked(channel: Int, sampler: AVAudioUnitSampler, state: ChannelState) {
         let program = state.program[channel]
         let msb = channel == 9 ? kAUSampler_DefaultPercussionBankMSB : kAUSampler_DefaultMelodicBankMSB
         do {

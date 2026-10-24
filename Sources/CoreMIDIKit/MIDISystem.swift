@@ -18,7 +18,7 @@ public final class MIDISystem {
     /// Called on the main queue when the MIDI setup changes (devices plugged or unplugged).
     public var setupChanged: (() -> Void)?
 
-    public init(name: String = "Ensemble") throws {
+    public init(name: String = "Apprentice") throws {
         var status = MIDIClientCreateWithBlock(name as CFString, &client) { [weak self] notification in
             if notification.pointee.messageID == .msgSetupChanged {
                 DispatchQueue.main.async { self?.setupChanged?() }

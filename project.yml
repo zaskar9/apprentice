@@ -1,39 +1,44 @@
-# XcodeGen project description for the macOS application.
+# XcodeGen project description for the macOS application (Apprentice, named after Cakewalk Apprentice).
 #   brew install xcodegen
 #   xcodegen generate
-#   open Ensemble.xcodeproj
+#   open Apprentice.xcodeproj
 # The generated project is not committed; the Swift package in this directory holds the code.
-name: Ensemble
+name: Apprentice
 options:
-  bundleIdPrefix: org.ensemble-app
+  bundleIdPrefix: io.github.zaskar9
   deploymentTarget:
     macOS: "13.0"
   xcodeVersion: "15.0"
   generateEmptyDirectories: true
 packages:
-  Ensemble:
+  Apprentice:
     path: .
 targets:
-  Ensemble:
+  Apprentice:
     type: application
     platform: macOS
     sources:
-      - path: Apps/EnsembleMac
+      - path: Apps/Apprentice
         excludes:
           - Info.plist
-          - Ensemble.entitlements
+          - Apprentice.entitlements
+      # The app icon: an Icon Composer bundle (Xcode 26); Xcode compiles it, with a flat fallback
+      # for macOS 13 and 14. The Illustrator master next to it stays out of the build.
+      - path: Resources/Apprentice.icon
+        type: file
+        buildPhase: resources
     dependencies:
-      - package: Ensemble
+      - package: Apprentice
         product: SequencerKit
-      - package: Ensemble
+      - package: Apprentice
         product: CoreMIDIKit
-      - package: Ensemble
+      - package: Apprentice
         product: SynthKit
     info:
-      path: Apps/EnsembleMac/Info.plist
+      path: Apps/Apprentice/Info.plist
       properties:
-        CFBundleName: Ensemble
-        CFBundleDisplayName: Ensemble
+        CFBundleName: Apprentice
+        CFBundleDisplayName: Apprentice
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         LSMinimumSystemVersion: "13.0"
@@ -43,46 +48,47 @@ targets:
           - CFBundleTypeName: Cakewalk Work
             CFBundleTypeRole: Viewer
             LSHandlerRank: Owner
-            LSItemContentTypes: [org.ensemble-app.cakewalk-work]
+            LSItemContentTypes: [io.github.zaskar9.apprentice.cakewalk-work]
           - CFBundleTypeName: Standard MIDI File
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.midi-audio]
         UTImportedTypeDeclarations:
-          - UTTypeIdentifier: org.ensemble-app.cakewalk-work
+          - UTTypeIdentifier: io.github.zaskar9.apprentice.cakewalk-work
             UTTypeDescription: Cakewalk Work
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [wrk]
-          - UTTypeIdentifier: org.ensemble-app.soundfont
+          - UTTypeIdentifier: io.github.zaskar9.apprentice.soundfont
             UTTypeDescription: SoundFont
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [sf2]
-          - UTTypeIdentifier: org.ensemble-app.dls
+          - UTTypeIdentifier: io.github.zaskar9.apprentice.dls
             UTTypeDescription: Downloadable Sounds
             UTTypeConformsTo: [public.data]
             UTTypeTagSpecification:
               public.filename-extension: [dls]
     entitlements:
-      path: Apps/EnsembleMac/Ensemble.entitlements
+      path: Apps/Apprentice/Apprentice.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
     settings:
       base:
-        PRODUCT_NAME: Ensemble
-        PRODUCT_BUNDLE_IDENTIFIER: org.ensemble-app.Ensemble
+        PRODUCT_NAME: Apprentice
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.zaskar9.apprentice
         SWIFT_VERSION: "5.9"
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         CODE_SIGN_STYLE: Automatic
         ENABLE_HARDENED_RUNTIME: true
+        ASSETCATALOG_COMPILER_APPICON_NAME: Apprentice
         COMBINE_HIDPI_IMAGES: true
 schemes:
-  Ensemble:
+  Apprentice:
     build:
       targets:
-        Ensemble: all
+        Apprentice: all
     run:
       config: Debug
