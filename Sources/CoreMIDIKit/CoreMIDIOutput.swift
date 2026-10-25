@@ -90,16 +90,32 @@ public final class CoreMIDIOutput: MIDIOutput {
 
     public func flush() {}
 
-    /// Sends all sounding notes off on every channel of every mapped port, immediately.
-    public func allNotesOff() {
+    /// Drops the packets CoreMIDI still holds for the mapped destinations (MIDIFlushOutput).
+    public func discardScheduled() {
         lock.lock()
-        let targets = Array(endpoints.values)
+        let targets = Array(Set(endpoints.values))
         lock.unlock()
         for endpoint in targets {
+            MIDIFlushOutput(endpoint)
+        }
+    }
+
+    /// All notes off and reset all controllers on every channel, immediately, after dropping
+    /// what is still scheduled: to the mapped destinations, or with `allDestinations` to every
+    /// destination CoreMIDI knows (a panic must reach a device that is no longer routed).
+    public func allNotesOff(allDestinations: Bool = false) {
+        lock.lock()
+        var targets = Set(endpoints.values)
+        lock.unlock()
+        if allDestinations {
+            for d in system.destinations { targets.insert(d.endpoint) }
+        }
+        for endpoint in targets {
+            MIDIFlushOutput(endpoint)
             for channel in 0..<16 {
                 let status = UInt8(0xb0 | channel)
-                let word = UInt32(0x20) << 24 | UInt32(status) << 16 | UInt32(123) << 8
-                sendWords([word], at: 0, to: endpoint)
+                sendWords([UInt32(0x20) << 24 | UInt32(status) << 16 | UInt32(123) << 8], at: 0, to: endpoint)
+                sendWords([UInt32(0x20) << 24 | UInt32(status) << 16 | UInt32(121) << 8], at: 0, to: endpoint)
             }
         }
     }

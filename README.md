@@ -44,13 +44,18 @@ swift test
 ## Using the player
 
 - File > Open (⌘O), or drop a file on the window, or double-click a `.wrk` file in the Finder.
-- Device menu: one submenu per port the work uses; pick the built-in synthesizer or a CoreMIDI
-  destination for each. The choice is remembered; new ports default to the built-in synthesizer.
-  Device > Synthesizer switches between the system's General MIDI bank and a loaded soundfont
-  (`.sf2` or `.dls`, for example FluidR3_GM); the soundfont is remembered too. Panic (⌘.) sends
-  all-notes-off and a controller reset everywhere.
+- Settings > MIDI Devices, after Cakewalk's dialog: the checked output devices (the built-in
+  synthesizer, CoreMIDI destinations) become ports 1, 2, 3 in list order; drag to reorder, or
+  "Move checked devices to top". The window shows which device each port of the open work goes
+  to. A fresh install plays through the built-in synthesizer. Settings > Synthesizer switches
+  between the system's General MIDI bank and a loaded soundfont (`.sf2` or `.dls`, for example
+  FluidR3_GM); the soundfont is remembered too. Realtime > Panic (⌘.) sends all-notes-off and a
+  controller reset everywhere.
 - Scale menu: Time (mm:ss) or Measures, like the Media Player's Scale menu.
 - Space plays and pauses, S stops (and rewinds), W rewinds. The slider seeks.
+- Window > Event list > Track n opens Cakewalk's Event list for that track (read-only for now):
+  Trk, Hr:Mn:Sc:Fr, Meas:Beat:Tick, Chn, Kind and Values, with the row at the Now time selected;
+  selecting a row while stopped moves the Now time there.
 
 The built-in synthesizer sounds without any setup. External destinations (a MIDI interface, a
 DAW's virtual input, FluidSynth started with `-m coremidi`) appear in the Device menu as CoreMIDI

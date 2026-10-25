@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/zaskar9/libsseq.git",
       "state" : {
-        "revision" : "fbc7f9cb4ca92f32124bcb2c5fd0b409f46086e7",
-        "version" : "0.3.1"
+        "revision" : "f02710793716cab5ecf89a98d9c2d632066bb287",
+        "version" : "0.4.1"
       }
     }
   ],

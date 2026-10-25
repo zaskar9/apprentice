@@ -1,7 +1,7 @@
 import CoreMIDI
 import Foundation
 
-/// A CoreMIDI destination (an output endpoint).
+/// A CoreMIDI endpoint (a destination for output, or a source for input).
 public struct MIDIDestination: Identifiable, Hashable {
     public let endpoint: MIDIEndpointRef
     /// CoreMIDI's persistent identifier for the endpoint; what an application should remember.
@@ -38,6 +38,17 @@ public final class MIDISystem {
     public var destinations: [MIDIDestination] {
         (0..<MIDIGetNumberOfDestinations()).compactMap { i in
             let endpoint = MIDIGetDestination(i)
+            guard endpoint != 0 else { return nil }
+            var uniqueID: MIDIUniqueID = 0
+            MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyUniqueID, &uniqueID)
+            return MIDIDestination(endpoint: endpoint, uniqueID: uniqueID, name: MIDISystem.displayName(of: endpoint))
+        }
+    }
+
+    /// All sources (input endpoints) currently present, in CoreMIDI's order.
+    public var sources: [MIDIDestination] {
+        (0..<MIDIGetNumberOfSources()).compactMap { i in
+            let endpoint = MIDIGetSource(i)
             guard endpoint != 0 else { return nil }
             var uniqueID: MIDIUniqueID = 0
             MIDIObjectGetIntegerProperty(endpoint, kMIDIPropertyUniqueID, &uniqueID)

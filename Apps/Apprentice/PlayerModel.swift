@@ -35,21 +35,29 @@ final class PlayerModel: ObservableObject {
         case measures
     }
 
-    /// Where a Cakewalk port goes: the built-in synthesizer or a CoreMIDI destination.
-    enum PortTarget: Equatable {
+    /// An output device as the MIDI Devices dialog lists it: the built-in synthesizer or a CoreMIDI
+    /// destination. The checked devices become Cakewalk ports 1, 2, 3 in list order, as in
+    /// Cakewalk's Settings > MIDI Devices.
+    enum DeviceID: Hashable {
         case builtInSynth
         case destination(MIDIUniqueID)
 
         static let builtInSynthKey: Int = -1
         var stored: Int {
             switch self {
-            case .builtInSynth: return PortTarget.builtInSynthKey
+            case .builtInSynth: return DeviceID.builtInSynthKey
             case .destination(let id): return Int(id)
             }
         }
         init(stored: Int) {
-            self = stored == PortTarget.builtInSynthKey ? .builtInSynth : .destination(MIDIUniqueID(stored))
+            self = stored == DeviceID.builtInSynthKey ? .builtInSynth : .destination(MIDIUniqueID(stored))
         }
+    }
+
+    struct OutputDevice: Identifiable, Equatable {
+        let id: DeviceID
+        let name: String
+        var checked: Bool
     }
 
     static let workType = UTType(importedAs: "io.github.zaskar9.apprentice.cakewalk-work", conformingTo: .data)
@@ -72,7 +80,10 @@ final class PlayerModel: ObservableObject {
         didSet { UserDefaults.standard.set(scale.rawValue, forKey: "scale") }
     }
     @Published private(set) var destinations: [MIDIDestination] = []
-    @Published private(set) var portMap: [Int: PortTarget] = [:]
+    @Published private(set) var sources: [MIDIDestination] = []
+    /// The output devices in the user's order, present ones only; checked ones are the ports.
+    @Published private(set) var outputDevices: [OutputDevice] = []
+    @Published var showingDevicesDialog = false
     @Published private(set) var soundFontURL: URL?
     @Published var showingOpenPanel = false
     @Published var showingSoundFontPanel = false
@@ -96,10 +107,13 @@ final class PlayerModel: ObservableObject {
         if let saved = UserDefaults.standard.string(forKey: "scale"), let s = Scale(rawValue: saved) {
             scale = s
         }
-        if let saved = UserDefaults.standard.dictionary(forKey: "portMap") as? [String: Int] {
-            for (key, value) in saved {
-                if let port = Int(key) { portMap[port] = PortTarget(stored: value) }
-            }
+        if let order = UserDefaults.standard.array(forKey: "deviceOrder") as? [Int] {
+            rememberedOrder = order.map { DeviceID(stored: $0) }
+        }
+        if let checked = UserDefaults.standard.array(forKey: "checkedDevices") as? [Int] {
+            rememberedChecked = Set(checked.map { DeviceID(stored: $0) })
+        } else {
+            rememberedChecked = [.builtInSynth] // a fresh install plays through the built-in synthesizer
         }
         do {
             synth = try BuiltInSynth(clock: clock)
@@ -138,7 +152,7 @@ final class PlayerModel: ObservableObject {
             fileURL = url
             endTick = work.endTick
             position = 0
-            ensurePortMap(for: work)
+            applyRouting()
             synth?.preload(for: work)
             try makeTransport()
         } catch {
@@ -226,18 +240,20 @@ final class PlayerModel: ObservableObject {
         position = target
     }
 
+    /// Stops and silences everything that can make a sound: the transport's panic goes through the
+    /// current routes; the two outputs are told directly as well, so a device that is no longer
+    /// routed (or never was) is reached too.
     func panic() {
-        guard let confined = confined else {
-            coreMIDI?.allNotesOff()
-            synth?.allNotesOff(now: true)
-            return
+        if let confined = confined {
+            stopTimer()
+            position = queue.sync {
+                confined.transport.panic()
+                return confined.transport.now
+            }
+            isPlaying = false
         }
-        stopTimer()
-        position = queue.sync {
-            confined.transport.panic()
-            return confined.transport.now
-        }
-        isPlaying = false
+        coreMIDI?.allNotesOff(allDestinations: true)
+        synth?.allNotesOff(now: true)
     }
 
     private func startTimer() {
@@ -274,50 +290,86 @@ final class PlayerModel: ObservableObject {
 
     var hasBuiltInSynth: Bool { synth != nil }
 
+    /// Every device the user has ever ordered or checked, present or not, so that an unplugged
+    /// interface keeps its place and its port when it comes back.
+    private var rememberedOrder: [DeviceID] = []
+    private var rememberedChecked: Set<DeviceID> = []
+
+    /// The device each port of the open work goes to, for comparing routings.
+    private func routing(of devices: [OutputDevice]) -> [DeviceID?] {
+        let checked = devices.filter { $0.checked }
+        return ports.map { port in checked.isEmpty ? nil : checked[min(port, checked.count - 1)].id }
+    }
+
+    /// Routes must not change under a running transport: the note-offs of notes sounding on the
+    /// old device would go to the new one and the old one would hang. Pausing first silences
+    /// through the old routes (and discards what is scheduled); Space continues afterwards.
+    private func pauseIfRoutingChanges(to devices: [OutputDevice]) {
+        if isPlaying, routing(of: devices) != routing(of: outputDevices) {
+            pause()
+        }
+    }
+
+    /// Rebuilds the device list from what is present now, in the remembered order, with new
+    /// devices appended unchecked.
     func refreshDestinations() {
         destinations = system?.destinations ?? []
-        if let work = work {
-            ensurePortMap(for: work) // a destination may have appeared after the file was opened
-        } else {
-            applyPortMap()
-        }
-    }
-
-    func map(port: Int, to target: PortTarget) {
-        portMap[port] = target
-        savePortMap()
-        applyPortMap()
-    }
-
-    private func isPresent(_ target: PortTarget) -> Bool {
-        switch target {
-        case .builtInSynth: return synth != nil
-        case .destination(let id): return destinations.contains { $0.uniqueID == id }
-        }
-    }
-
-    /// Maps every port the work uses that has no present target: to the built-in synthesizer,
-    /// or else to the first CoreMIDI destination.
-    private func ensurePortMap(for work: Work) {
-        let fallback: PortTarget? = synth != nil
-            ? PortTarget.builtInSynth
-            : destinations.first.map { PortTarget.destination($0.uniqueID) }
-        var changed = false
-        for port in ports {
-            if let target = portMap[port], isPresent(target) { continue }
-            if let fallback = fallback {
-                portMap[port] = fallback
-                changed = true
+        sources = system?.sources ?? []
+        var present: [DeviceID: String] = [:]
+        if synth != nil { present[.builtInSynth] = "Built-in Synthesizer" }
+        for d in destinations { present[.destination(d.uniqueID)] = d.name }
+        var list: [OutputDevice] = []
+        for id in rememberedOrder {
+            if let name = present[id] {
+                list.append(OutputDevice(id: id, name: name, checked: rememberedChecked.contains(id)))
             }
         }
-        if changed { savePortMap() }
-        applyPortMap()
+        let known = Set(list.map { $0.id })
+        if synth != nil, !known.contains(.builtInSynth) {
+            list.append(OutputDevice(id: .builtInSynth, name: "Built-in Synthesizer",
+                                     checked: rememberedChecked.contains(.builtInSynth)))
+        }
+        for d in destinations where !known.contains(.destination(d.uniqueID)) {
+            let id = DeviceID.destination(d.uniqueID)
+            list.append(OutputDevice(id: id, name: d.name, checked: rememberedChecked.contains(id)))
+        }
+        pauseIfRoutingChanges(to: list) // a device that vanished or appeared may move a port
+        outputDevices = list
+        applyRouting()
     }
 
-    private func applyPortMap() {
+    /// The devices behind ports 1, 2, 3, ...: the checked devices in list order.
+    var portDevices: [OutputDevice] { outputDevices.filter { $0.checked } }
+
+    /// The device a 0-based port goes to; ports beyond the last checked device use the last one,
+    /// nil when no device is checked.
+    func device(forPort port: Int) -> OutputDevice? {
+        let ports = portDevices
+        guard !ports.isEmpty else { return nil }
+        return ports[min(max(port, 0), ports.count - 1)]
+    }
+
+    /// Takes the dialog's result: the full list in its new order with its check marks.
+    func applyDeviceSettings(_ devices: [OutputDevice]) {
+        pauseIfRoutingChanges(to: devices)
+        outputDevices = devices
+        // Keep absent devices in the remembered order, after the present ones.
+        let presentIDs = devices.map { $0.id }
+        rememberedOrder = presentIDs + rememberedOrder.filter { !presentIDs.contains($0) }
+        for d in devices {
+            if d.checked { rememberedChecked.insert(d.id) } else { rememberedChecked.remove(d.id) }
+        }
+        UserDefaults.standard.set(rememberedOrder.map { $0.stored }, forKey: "deviceOrder")
+        UserDefaults.standard.set(rememberedChecked.map { $0.stored }, forKey: "checkedDevices")
+        applyRouting()
+    }
+
+    /// Points the router's ports at the checked devices.
+    private func applyRouting() {
+        let used = Set(ports).union(0..<max(1, portDevices.count))
         var coreMIDIMap: [Int: MIDIDestination] = [:]
-        for port in Set(portMap.keys).union(ports) {
-            switch portMap[port] {
+        for port in used {
+            switch device(forPort: port)?.id {
             case .builtInSynth?:
                 if let synth = synth {
                     router.setRoute(PortRouter.Route(output: synth, port: 0), forPort: port)
@@ -338,10 +390,12 @@ final class PlayerModel: ObservableObject {
         coreMIDI?.portMap = coreMIDIMap
     }
 
-    private func savePortMap() {
-        var saved: [String: Int] = [:]
-        for (port, target) in portMap { saved[String(port)] = target.stored }
-        UserDefaults.standard.set(saved, forKey: "portMap")
+    /// "Port 1: Built-in Synthesizer" for each port the open work uses, for the player window.
+    var portSummary: [String] {
+        ports.map { port in
+            let name = device(forPort: port)?.name ?? "no device"
+            return "Port \(port + 1): \(name)"
+        }
     }
 
     // MARK: Synthesizer

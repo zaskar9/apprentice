@@ -136,9 +136,9 @@ public final class BuiltInSynth: MIDIOutput {
             if state.loaded[channel] != state.program[channel] {
                 loadLocked(channel: channel, sampler: sampler, state: state)
             }
-            if kind == 0x90 {
+            if kind == 0x90, d2 != 0 {
                 sampler.startNote(d1, withVelocity: d2, onChannel: UInt8(channel))
-            } else if kind == 0x80 {
+            } else if kind == 0x80 || kind == 0x90 { // a velocity-0 note-on is a note-off
                 sampler.stopNote(d1, onChannel: UInt8(channel))
             } else {
                 sampler.sendPressure(forKey: d1, withValue: d2, onChannel: UInt8(channel))
@@ -179,6 +179,11 @@ public final class BuiltInSynth: MIDIOutput {
     }
 
     public func flush() {}
+
+    /// Drops the queued messages whose time has not come.
+    public func discardScheduled() {
+        scheduler.clear()
+    }
 
     /// All notes off and controller reset on every channel; with `now` the pending queue is dropped too.
     public func allNotesOff(now: Bool = false) {

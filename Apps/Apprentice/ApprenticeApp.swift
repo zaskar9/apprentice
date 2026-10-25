@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 struct ApprenticeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = PlayerModel()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +18,9 @@ struct ApprenticeApp: App {
                 .fileImporter(isPresented: $model.showingSoundFontPanel, allowedContentTypes: PlayerModel.soundFontTypes) { result in
                     if case .success(let url) = result { model.loadSoundFont(url) }
                 }
+                .sheet(isPresented: $model.showingDevicesDialog) {
+                    MIDIDevicesView(model: model)
+                }
                 .alert("Apprentice", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
                     Button("OK") { model.errorMessage = nil }
                 } message: {
@@ -25,6 +29,21 @@ struct ApprenticeApp: App {
         }
         .windowResizability(.contentSize)
         .commands {
+            // Cakewalk's Window > New > Event list, one window per track, in the system Window menu.
+            CommandGroup(before: .windowList) {
+                Menu("Event list") {
+                    if let work = model.work {
+                        ForEach(work.tracks) { track in
+                            Button("Track \(track.displayNumber): \(track.name)") {
+                                openWindow(id: "event-list", value: track.index)
+                            }
+                        }
+                    } else {
+                        Text("No work open")
+                    }
+                }
+                Divider()
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { model.showingOpenPanel = true }
                     .keyboardShortcut("o")
@@ -32,22 +51,8 @@ struct ApprenticeApp: App {
                     .keyboardShortcut("w")
                     .disabled(model.work == nil)
             }
-            CommandMenu("Device") {
-                ForEach(model.ports, id: \.self) { port in
-                    Menu("Port \(port + 1)") {
-                        if model.hasBuiltInSynth {
-                            targetButton("Built-in Synthesizer", port: port, target: .builtInSynth)
-                            Divider()
-                        }
-                        if model.destinations.isEmpty {
-                            Text("No MIDI destinations")
-                        }
-                        ForEach(model.destinations) { destination in
-                            targetButton(destination.name, port: port, target: .destination(destination.uniqueID))
-                        }
-                    }
-                }
-                Divider()
+            CommandMenu("Settings") { // Cakewalk's Settings menu; the entries that exist so far
+                Button("MIDI Devices…") { model.showingDevicesDialog = true }
                 Menu("Synthesizer") {
                     Toggle("Built-in General MIDI bank", isOn: Binding(
                         get: { model.soundFontURL == nil },
@@ -61,8 +66,6 @@ struct ApprenticeApp: App {
                 }
                 .disabled(!model.hasBuiltInSynth)
                 Divider()
-                Button("Panic") { model.panic() }
-                    .keyboardShortcut(".", modifiers: [.command])
                 Toggle("Log MIDI to Console", isOn: $model.midiLogging)
             }
             CommandMenu("Scale") {
@@ -82,18 +85,16 @@ struct ApprenticeApp: App {
                 Button("Rewind") { model.rewind() }
                     .keyboardShortcut("w", modifiers: [])
                     .disabled(model.work == nil)
+                Divider()
+                Button("Panic") { model.panic() }
+                    .keyboardShortcut(".", modifiers: [.command])
             }
         }
-    }
-}
-
-extension ApprenticeApp {
-    /// A menu item with a checkmark when the port goes to this target.
-    private func targetButton(_ name: String, port: Int, target: PlayerModel.PortTarget) -> some View {
-        Toggle(name, isOn: Binding(
-            get: { model.portMap[port] == target },
-            set: { _ in model.map(port: port, to: target) }
-        ))
+        WindowGroup("Event list", id: "event-list", for: Int.self) { $trackIndex in
+            if let trackIndex = trackIndex {
+                EventListView(model: model, trackIndex: trackIndex)
+            }
+        }
     }
 }
 

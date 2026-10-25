@@ -42,6 +42,13 @@ struct PlayerView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if model.work != nil {
+                // Which device each port of the work goes to (Settings > MIDI Devices changes it).
+                Text(model.portSummary.joined(separator: "   "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(12)
         .frame(width: 420)

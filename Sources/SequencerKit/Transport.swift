@@ -52,10 +52,15 @@ public protocol MIDIOutput: AnyObject {
     func sendSysex(at time: Double, port: Int, bytes: [UInt8])
     /// Called at the end of every pump; batching outputs hand their packets over here.
     func flush()
+    /// Called before the transport silences its notes on stop, seek and panic: messages already
+    /// handed over with a time still in the future must not be delivered, or a note-on scheduled
+    /// ahead would sound after the note-offs and never end.
+    func discardScheduled()
 }
 
 public extension MIDIOutput {
     func flush() {}
+    func discardScheduled() {}
 }
 
 /// Playback settings (see libsseq's PlaybackOptions).
@@ -165,6 +170,10 @@ public final class Transport {
         }
         callbacks.flush = { ctx in
             Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue().output.flush()
+        }
+        callbacks.discard_scheduled = { ctx in
+            MIDILog.log("transport", "discard scheduled")
+            Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue().output.discardScheduled()
         }
         callbacks.string_event = { ctx, track, event, payload, size, time in
             let context = Unmanaged<Context>.fromOpaque(ctx!).takeUnretainedValue()

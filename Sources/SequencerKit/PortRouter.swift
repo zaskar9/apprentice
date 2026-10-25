@@ -60,4 +60,8 @@ public final class PortRouter: MIDIOutput {
     public func flush() {
         for output in outputs { output.flush() }
     }
+
+    public func discardScheduled() {
+        for output in outputs { output.discardScheduled() }
+    }
 }
