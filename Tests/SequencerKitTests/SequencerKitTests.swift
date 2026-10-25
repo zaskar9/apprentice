@@ -152,3 +152,22 @@ final class SequencerKitTests: XCTestCase {
         XCTAssertTrue(recorder.isEmpty)
     }
 }
+
+final class DisplayTextTests: XCTestCase {
+    func testEventListText() {
+        XCTAssertEqual(DisplayText.keyName(60), "C 5")
+        XCTAssertEqual(DisplayText.keyName(56), "G#4")
+        XCTAssertEqual(DisplayText.key(parsing: "G 10"), 127)
+        XCTAssertNil(DisplayText.key(parsing: "H2"))
+        XCTAssertEqual(DisplayText.durationText(200, ppq: 120), "1:080")
+        XCTAssertEqual(DisplayText.duration(parsing: "1:080", ppq: 120), 200)
+        XCTAssertEqual(DisplayText.generalMIDIProgramName(20), "Reed Organ")
+        XCTAssertNil(DisplayText.generalMIDIProgramName(128))
+        XCTAssertEqual(EventKind.pitchWheel.displayName, "Wheel")
+        let note = Event.note(0, channel: 2, key: 60, velocity: 100, duration: 240)
+        XCTAssertEqual(note.channelText, "3")
+        XCTAssertEqual(note.valuesText(ppq: 120), "C 5  100  2:000")
+        XCTAssertEqual(Event.text(0, "hello").valuesText(ppq: 120), "hello")
+        XCTAssertEqual(Event.text(0, "hello").channelText, "n/a")
+    }
+}
