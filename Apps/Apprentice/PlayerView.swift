@@ -20,7 +20,7 @@ struct PlayerView: View {
             Slider(value: $sliderValue, in: 0...1) { editing in
                 model.isScrubbing = editing
                 if !editing {
-                    model.seek(to: Tick((sliderValue * Double(model.endTick)).rounded()))
+                    model.seek(to: sliderTick)
                 }
             }
             .disabled(model.work == nil)
@@ -35,7 +35,8 @@ struct PlayerView: View {
                     .disabled(model.work == nil)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(model.positionText)
+                    // While the slider is dragged, the counter follows the slider, not the playhead.
+                    Text(model.isScrubbing ? model.positionText(at: sliderTick) : model.positionText)
                         .font(.system(.body, design: .monospaced))
                     Text(model.scale == .time ? "Scale: Time (mm:ss)" : "Scale: Measures")
                         .font(.caption)
@@ -68,6 +69,10 @@ struct PlayerView: View {
             }
             return true
         }
+    }
+
+    private var sliderTick: Tick {
+        Tick((sliderValue * Double(model.endTick)).rounded())
     }
 
     private func controlButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {

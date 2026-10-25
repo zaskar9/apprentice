@@ -92,7 +92,7 @@ final class PlayerModel: ObservableObject {
     }
     @Published var errorMessage: String?
     /// True while the user drags the position slider; the timer then leaves `position` alone.
-    var isScrubbing = false
+    @Published var isScrubbing = false
 
     private let clock = HostClock()
     private var system: MIDISystem?
@@ -449,37 +449,59 @@ final class PlayerModel: ObservableObject {
         }
     }
 
-    var positionText: String {
+    var positionText: String { positionText(at: position) }
+
+    /// The counter text for a position, in the current scale.
+    func positionText(at tick: Tick) -> String {
         guard let work = work else { return "" }
         switch scale {
         case .time:
-            let total = work.seconds(at: position)
+            let total = work.seconds(at: tick)
             let seconds = Int(total.rounded(.down))
             let hundredths = Int((total - Double(seconds)) * 100)
             return String(format: "%d:%02d.%02d", seconds / 60, seconds % 60, hundredths)
         case .measures:
-            return work.mbt(at: position).description
+            return work.mbt(at: tick).description
         }
     }
 
     /// Evenly spaced ruler marks over the work, as (tick, label) pairs.
+    /// Regular marks from the start, plus one at the end of the work. When the end mark would crowd
+    /// the last regular mark (closer than about two thirds of a step), the regular one gives way.
     func rulerMarks(count: Int) -> [(tick: Tick, label: String)] {
         guard let work = work, endTick > 0, count > 1 else { return [] }
+        var marks: [(tick: Tick, label: String)]
+        let endLabel: String
+        let crowded: Bool
         switch scale {
         case .time:
             let total = work.seconds(at: endTick)
             let step = PlayerModel.niceStep(total / Double(count - 1), candidates: [1, 2, 5, 10, 15, 30, 60, 120, 300, 600])
-            return stride(from: 0.0, through: total, by: step).map { s -> (tick: Tick, label: String) in
+            let regular = Array(stride(from: 0.0, to: total, by: step))
+            marks = regular.map { s -> (tick: Tick, label: String) in
                 let tick = work.tick(atSeconds: s)
                 return (tick: tick, label: label(for: tick))
             }
+            endLabel = label(for: endTick)
+            crowded = total - (regular.last ?? 0) < step * 0.65
         case .measures:
             let measures = work.measure(at: max(0, endTick - 1))
-            let step = Int(PlayerModel.niceStep(Double(measures) / Double(count - 1), candidates: [1, 2, 4, 8, 16, 32, 64]))
-            return stride(from: 1, through: measures, by: max(1, step)).map { m -> (tick: Tick, label: String) in
+            let step = max(1, Int(PlayerModel.niceStep(Double(measures) / Double(count - 1), candidates: [1, 2, 5, 10, 15, 20, 25, 50, 100])))
+            // Measure 1, then the multiples of the step (10, 20, 30, ...); small steps count on from 1.
+            let regular = [1] + Array(stride(from: step < 5 ? 1 + step : step, to: measures, by: step))
+            marks = regular.map { m -> (tick: Tick, label: String) in
                 (tick: work.startOfMeasure(m), label: String(m))
             }
+            endLabel = String(measures)
+            crowded = Double(measures - (regular.last ?? 1)) < Double(step) * 0.65
         }
+        if crowded, marks.count > 1 {
+            marks.removeLast()
+        }
+        if marks.last?.label != endLabel {
+            marks.append((tick: endTick, label: endLabel))
+        }
+        return marks
     }
 
     private static func niceStep(_ raw: Double, candidates: [Double]) -> Double {

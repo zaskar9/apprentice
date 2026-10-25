@@ -15,7 +15,7 @@ let package = Package(
         .library(name: "SynthKit", targets: ["SynthKit"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/zaskar9/libsseq.git", from: "0.3.1"),
+        .package(url: "https://github.com/zaskar9/libsseq.git", from: "0.4.1"),
     ],
     targets: [
         .target(
